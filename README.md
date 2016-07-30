@@ -11,8 +11,8 @@
 ### 2. connect router to veth0
 	1. change SWROPTINS accordingly
 
-### 3. connect simple_sniffer to veth1 and eth1
+### 3. connect simple_sniffer to veth1 and eth0
 	* "filter messages from veth1 to eth0"
 	* "pass all messages from eth0 to veth1"
-	1. sudo python simple_sniffer veth1 eth0
+	1. sudo python simple_sniffer.py veth1 eth0
 	
