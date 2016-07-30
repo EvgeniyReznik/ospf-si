@@ -25,7 +25,7 @@ ETH_P_ALL = 3
 # rawSocketRecv.setsockopt(socket.SOL_SOCKET, IN.SO_BINDTODEVICE, struct.pack("%ds"%(len("veth1")+1,),"veth1"))
 
 
-class PacketCapture(Thread):
+class PacketFilter(Thread):
 
     def sniff(self):
 
@@ -37,7 +37,8 @@ class PacketCapture(Thread):
         rawSocketSend.bind((self.send_iface, ETH_P_ALL))
         print "capture socket send interface " + self.send_iface
 
-        HOP_TIME = 10  # number of seconds
+        HOP_TIME_SAME_PACKET = 10  # number of seconds
+        HOP_TIME_DIFF_PACKET = 5   # number of seconds
         hopStart = time.time()
         sizeIP = '0x00'
 
@@ -92,19 +93,32 @@ class PacketCapture(Thread):
 
                     if typeOSPF == '01':  # OSPF HELLO
                         # print "OSPF HELLO"
-                        if (time.time() < hopStart + HOP_TIME):
-                            continue
-                        hopStart = time.time()
-                        # else:
-                        # print "DATA"
+                        if (receivedPacket == self.ospf_hello_cache):
+                            #same ospf hello packet as previous
+                            if (time.time() < hopStart + HOP_TIME_SAME_PACKET):
+                                #do not send packet if it didnt change and 10 sec didnt pass
+                                continue
+                            hopStart = time.time()
+                        else:
+                            #ospf hello packet deffers from previous
+                            self.ospf_hello_cache = receivedPacket
+                            if (time.time() < hopStart + HOP_TIME_DIFF_PACKET):
+                                #do not send packet if it didnt change and 10 sec didnt pass
+                                continue
+                            hopStart = time.time()
 
             if int(sizeIP, 16) < 1500:
-                rawSocketSend.send(receivedPacket)
-                # print "Packet sent"
+                try:
+                    rawSocketSend.send(receivedPacket)
+                    # print "Packet sent"
+                except:
+                    print "Packet Filter: Packet dropped!!!"
+                    continue
 
     def __init__(self, recv_iface, send_iface):
         Thread.__init__(self)
 
+        self.ospf_hello_cache = None
         self.recv_iface = recv_iface
         self.send_iface = send_iface
 
@@ -135,6 +149,7 @@ class PacketBridge(Thread):
                 rawSocketSend.send(receivedPacket)
                 # print "Packet sent"
             except:
+                print "Packet Bridge: Packet dropped!!!"
                 continue
 
     def __init__(self, recv_iface, send_iface):
@@ -167,7 +182,7 @@ if __name__ == "__main__":
     host1_interface = RECV_INTERFACE_NAME
     host2_interface = SEND_INTERFACE_NAME
 
-    lthread = PacketCapture(host1_interface, host2_interface)
+    lthread = PacketFilter(host1_interface, host2_interface)
     rthread = PacketBridge(host2_interface, host1_interface)
 
     lthread.start()
