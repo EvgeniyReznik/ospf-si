@@ -25,7 +25,7 @@ OSPF_HELLO = 0x01
 
 
 RECV_INTERFACE_NAME = "veth1"
-SEND_INTERFACE_NAME = "ens33"
+SEND_INTERFACE_NAME = "eth0"
 PORT_NUMBER = 0
 ETH_P_ALL = 3
 
@@ -176,7 +176,8 @@ if __name__ == "__main__":
     print "capture socket send interface " + host2_interface
 
     timeThread = TimerThread(TIME_SLICE, bufferSizeUpdate, bufferUpdateLock)
-    lthread = PacketFilter(bufferUpdateLock, rawSocketRecv, rawSocketSend)
+    # lthread = PacketFilter(bufferUpdateLock, rawSocketRecv, rawSocketSend)
+    lthread = PacketBridge(rawSocketRecv, rawSocketSend)
     rthread = PacketBridge(rawSocketSend, rawSocketRecv)
 
     timeThread.start()
