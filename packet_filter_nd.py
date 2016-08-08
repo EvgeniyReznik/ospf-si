@@ -150,13 +150,19 @@ class PacketBridge(Thread):
     def sniff(self):
         rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW)  # THIS CODE WORKS
         rawSocket.bind((self.interface_name, ETH_P_ALL))
+        rawSocket.setblocking(0)
         print "capture socket recv interface " + self.interface_name
 
         while True:
             # print "---------------------------------------------bridge packet---------------------------------------------------"
-            receivedPacket = rawSocket.recv(4096)
 
-            self.packet_queue_left.put_nowait(receivedPacket)
+            try:
+                receivedPacket = rawSocket.recv(4096)
+                self.packet_queue_left.put_nowait(receivedPacket)
+            except Exception as e:
+                # print e
+                # print "Nothing to recieve!!!"
+                None
 
             try:
                 packet_to_send = self.packet_queue_right.get_nowait()
@@ -166,10 +172,10 @@ class PacketBridge(Thread):
 
             try:
                 rawSocket.send(packet_to_send)
-                # print "Packet sent" , self.ident
-            except MemoryError as e:
+                print "Packet sent" , self.ident
+            except Exception as e:
                 print "Packet Bridge: Packet dropped!!!"
-                print
+                print e
                 self.print_packet(packet_to_send)
                 continue
 
@@ -210,7 +216,7 @@ if __name__ == "__main__":
         global BUFFER_CURRENT_SIZE
         with bufferUpdateLock:
                 BUFFER_CURRENT_SIZE = BUFFER_SLICE_SIZE
-        print "Buff Update" , time.ctime()
+        # print "Buff Update" , time.ctime()
 
     packet_queue_left = Queue.Queue()
     packet_queue_right = Queue.Queue()
