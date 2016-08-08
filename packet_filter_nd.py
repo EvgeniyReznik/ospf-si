@@ -172,7 +172,7 @@ class PacketBridge(Thread):
 
             try:
                 rawSocket.send(packet_to_send)
-                print "Packet sent" , self.ident
+                # print "Packet sent" , self.ident
             except Exception as e:
                 print "Packet Bridge: Packet dropped!!!"
                 print e
