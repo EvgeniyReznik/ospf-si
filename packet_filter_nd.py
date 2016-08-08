@@ -25,7 +25,7 @@ OSPF_HELLO = 0x01
 
 
 RECV_INTERFACE_NAME = "veth1"
-SEND_INTERFACE_NAME = "eth0"
+SEND_INTERFACE_NAME = "ens33"
 PORT_NUMBER = 0
 ETH_P_ALL = 3
 
@@ -108,33 +108,79 @@ class PacketFilter(Thread):
 
 class PacketBridge(Thread):
 
-    def sniff(self):
+    def print_packet(self, packet):
+        # Ethernet Header...
+        ethernetHeader = packet[0:14]
+        ethrheader = struct.unpack("!6s6s2s", ethernetHeader)
+        destinationMAC = binascii.hexlify(ethrheader[0])
+        sourceMAC = binascii.hexlify(ethrheader[1])
+        protocol = binascii.hexlify(ethrheader[2])
 
+        print "DestinationMAC: " + destinationMAC
+        print "SourceMAC: " + sourceMAC
+        print "Protocol: " + protocol
+
+        if protocol == '0800':  # ip4
+            # IP Header...
+            ipHeader = packet[14:34]
+            ipHdr = struct.unpack("!1s1s2s2s2s1s1s2s4s4s", ipHeader)
+            sizeIP = binascii.hexlify(ipHdr[2])
+            protocolIP = binascii.hexlify(ipHdr[6])
+            destinationIP = socket.inet_ntoa(ipHdr[9])
+            sourceIP = socket.inet_ntoa(ipHdr[8])
+            print "Source IP: " + sourceIP
+            print "Destination IP: " + destinationIP
+            print "Protocol IP: " + protocolIP
+            print "Size IP: " + str(int(sizeIP, 16))
+
+        if protocol == '86dd':  # ip6
+            print 'ipv6 packet'
+            # IP Header...
+            ipHeader = packet[14:54]
+            ipHdr = struct.unpack("!4s2s1s1s16s16s", ipHeader)
+            sizeIP = binascii.hexlify(ipHdr[1])
+            protocolIP = binascii.hexlify(ipHdr[2])
+            sourceIP = binascii.hexlify(ipHdr[4])
+            destinationIP = binascii.hexlify(ipHdr[5])
+            print "Source IP: " + sourceIP
+            print "Destination IP: " + destinationIP
+            print "Protocol IP: " + protocolIP
+            print "Size IP: " + str(int(sizeIP, 16))
+
+    def sniff(self):
+        rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW)  # THIS CODE WORKS
+        rawSocket.bind((self.interface_name, ETH_P_ALL))
+        print "capture socket recv interface " + self.interface_name
 
         while True:
             # print "---------------------------------------------bridge packet---------------------------------------------------"
-            receivedPacket = self.left_socket.recv(2048)
+            receivedPacket = rawSocket.recv(4096)
 
-            # Ethernet Header...
-            ethernetHeader = receivedPacket[0:14]
-            ethrheader = struct.unpack("!6s6s2s", ethernetHeader)
-            destinationMAC = binascii.hexlify(ethrheader[0])
-            sourceMAC = binascii.hexlify(ethrheader[1])
-            protocol = binascii.hexlify(ethrheader[2])
+            self.packet_queue_left.put_nowait(receivedPacket)
 
             try:
-                self.right_socket.send(receivedPacket)
-                # print "Packet sent"
+                packet_to_send = self.packet_queue_right.get_nowait()
             except:
-                print "Packet Bridge: Packet dropped!!!"
+                # print "No packets to send!!!"
                 continue
 
-    def __init__(self, left_socket, right_socket):
+            try:
+                rawSocket.send(packet_to_send)
+                # print "Packet sent" , self.ident
+            except MemoryError as e:
+                print "Packet Bridge: Packet dropped!!!"
+                print
+                self.print_packet(packet_to_send)
+                continue
+
+    def __init__(self, interface_name, packet_queue_left, packet_queue_right):
         Thread.__init__(self)
-        self.left_socket = left_socket
-        self.right_socket = right_socket
+        self.interface_name = interface_name
+        self.packet_queue_left = packet_queue_left
+        self.packet_queue_right = packet_queue_right
 
     def run(self):
+        print "Strted thread: ", self.ident
         self.sniff()
 
     def stop(self):
@@ -166,19 +212,13 @@ if __name__ == "__main__":
                 BUFFER_CURRENT_SIZE = BUFFER_SLICE_SIZE
         print "Buff Update" , time.ctime()
 
-
-    rawSocketRecv = socket.socket(socket.PF_PACKET, socket.SOCK_RAW)  # THIS CODE WORKS
-    rawSocketRecv.bind((host1_interface, ETH_P_ALL))
-    print "capture socket recv interface " + host1_interface
-
-    rawSocketSend = socket.socket(socket.PF_PACKET, socket.SOCK_RAW)
-    rawSocketSend.bind((host2_interface, ETH_P_ALL))
-    print "capture socket send interface " + host2_interface
+    packet_queue_left = Queue.Queue()
+    packet_queue_right = Queue.Queue()
 
     timeThread = TimerThread(TIME_SLICE, bufferSizeUpdate, bufferUpdateLock)
     # lthread = PacketFilter(bufferUpdateLock, rawSocketRecv, rawSocketSend)
-    lthread = PacketBridge(rawSocketRecv, rawSocketSend)
-    rthread = PacketBridge(rawSocketSend, rawSocketRecv)
+    lthread = PacketBridge(host1_interface, packet_queue_left, packet_queue_right)
+    rthread = PacketBridge(host2_interface, packet_queue_right, packet_queue_left)
 
     timeThread.start()
     lthread.start()
