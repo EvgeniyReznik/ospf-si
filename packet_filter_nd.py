@@ -29,6 +29,9 @@ SEND_INTERFACE_NAME = "ens33"
 PORT_NUMBER = 0
 ETH_P_ALL = 3
 
+packet_queue_left = Queue.Queue()
+packet_queue_right = Queue.Queue()
+
 # rawSocketRecv = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3)) #THIS CODE WORKS
 # rawSocketRecv.setsockopt(socket.SOL_SOCKET, IN.SO_BINDTODEVICE, struct.pack("%ds"%(len("veth1")+1,),"veth1"))
 
@@ -147,6 +150,14 @@ class PacketBridge(Thread):
             print "Protocol IP: " + protocolIP
             print "Size IP: " + str(int(sizeIP, 16))
 
+    def printStatistics(self):
+        if(self.packet_sent_queue % 100 == 0):
+            print "ThreadId: ", self.ident
+            print " Recv Queue size: ", packet_queue_left.qsize()
+            print " Sent Queue size: ", packet_queue_right.qsize()
+            print " Packets sent to socket: ", self.packet_sent_socket
+            print " Packet sent to queue: ", self.packet_sent_queue
+
     def sniff(self):
         rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW)  # THIS CODE WORKS
         rawSocket.bind((self.interface_name, ETH_P_ALL))
@@ -156,34 +167,50 @@ class PacketBridge(Thread):
         while True:
             # print "---------------------------------------------bridge packet---------------------------------------------------"
 
+            packet_list_to_send = []
+            while(True):
+                try:
+                    packet_temp = None
+                    packet_temp = self.packet_queue_right.get_nowait()
+                    if (packet_temp != None):
+                        packet_list_to_send.append(packet_temp)
+                except Exception as e:
+                    # print "No packets to send!!!"
+                    # print e
+                    break
+
+            for packet_to_send in packet_list_to_send:
+                try:
+                    rawSocket.send(packet_to_send)
+                    self.packet_sent_socket += 1
+                    self.printStatistics()
+                    # print "Packet sent" , self.ident
+                except Exception as e:
+                    # print "Packet Bridge: Packet dropped!!!"
+                    # print e
+                    # self.print_packet(packet_to_send)
+                    continue
+
             try:
-                receivedPacket = rawSocket.recv(4096)
+                receivedPacket = rawSocket.recv(8192)
+                # print "Recieved packet: ", len(receivedPacket), "ThreadID: ", self.ident
                 self.packet_queue_left.put_nowait(receivedPacket)
+                self.packet_sent_queue += 1
+                self.printStatistics()
             except Exception as e:
                 # print e
                 # print "Nothing to recieve!!!"
                 None
 
-            try:
-                packet_to_send = self.packet_queue_right.get_nowait()
-            except:
-                # print "No packets to send!!!"
-                continue
-
-            try:
-                rawSocket.send(packet_to_send)
-                # print "Packet sent" , self.ident
-            except Exception as e:
-                print "Packet Bridge: Packet dropped!!!"
-                print e
-                self.print_packet(packet_to_send)
-                continue
+            time.sleep(0.001)
 
     def __init__(self, interface_name, packet_queue_left, packet_queue_right):
         Thread.__init__(self)
         self.interface_name = interface_name
         self.packet_queue_left = packet_queue_left
         self.packet_queue_right = packet_queue_right
+        self.packet_sent_socket = 0
+        self.packet_sent_queue = 0
 
     def run(self):
         print "Strted thread: ", self.ident
@@ -218,8 +245,6 @@ if __name__ == "__main__":
                 BUFFER_CURRENT_SIZE = BUFFER_SLICE_SIZE
         # print "Buff Update" , time.ctime()
 
-    packet_queue_left = Queue.Queue()
-    packet_queue_right = Queue.Queue()
 
     timeThread = TimerThread(TIME_SLICE, bufferSizeUpdate, bufferUpdateLock)
     # lthread = PacketFilter(bufferUpdateLock, rawSocketRecv, rawSocketSend)
