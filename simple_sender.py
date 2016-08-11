@@ -1,7 +1,7 @@
 # !/usr/bin/env python
 # import sys, os
 import socket
-import ospf_hello_packets
+import example_packets
 from time import sleep
 
 PROTOCOL_OSPF   = 0x59
@@ -17,19 +17,19 @@ rawSocketSend = socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.IPPROTO_
 rawSocketSend.bind((SEND_INTERFACE_NAME, PORT_NUMBER))
 
 hello_packet_130 = ''
-for c in ospf_hello_packets.OSPF_HELLO_PACKET_130.split(' '):
+for c in example_packets.OSPF_HELLO_PACKET_130.split(' '):
     hello_packet_130 += chr(int(c, 16))
 
 hello_packet_310 = ''
-for c in ospf_hello_packets.OSPF_HELLO_PACKET_310.split(' '):
+for c in example_packets.OSPF_HELLO_PACKET_310.split(' '):
     hello_packet_310 += chr(int(c, 16))
 
 ipv4_ping_request_packet = ''
-for c in ospf_hello_packets.IPV4_PING_REQUEST_PACKET.split(' '):
+for c in example_packets.IPV4_PING_REQUEST_PACKET.split(' '):
     ipv4_ping_request_packet += chr(int(c, 16))
 
 ipv4_ping_reply_packet = ''
-for c in ospf_hello_packets.IPV4_PING_REPLY_PACKET.split(' '):
+for c in example_packets.IPV4_PING_REPLY_PACKET.split(' '):
     ipv4_ping_reply_packet += chr(int(c, 16))
 
 
