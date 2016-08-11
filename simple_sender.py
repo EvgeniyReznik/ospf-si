@@ -28,6 +28,9 @@ ipv4_ping_request_packet = ''
 for c in ospf_hello_packets.IPV4_PING_REQUEST_PACKET.split(' '):
     ipv4_ping_request_packet += chr(int(c, 16))
 
+ipv4_ping_reply_packet = ''
+for c in ospf_hello_packets.IPV4_PING_REPLY_PACKET.split(' '):
+    ipv4_ping_reply_packet += chr(int(c, 16))
 
 
 for i in range(0, 1000000, 1):
@@ -36,7 +39,7 @@ for i in range(0, 1000000, 1):
         rawSocketSend.send(hello_packet_130)
         # print "Sending packet: ", i
         sleep(0.125)
-    rawSocketSend.send(ipv4_ping_request_packet)
+    rawSocketSend.send(ipv4_ping_reply_packet)
     for j in range(0, 10, 1):
         rawSocketSend.send(hello_packet_310)
         # print "Sending packet: ", j
