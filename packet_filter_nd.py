@@ -136,6 +136,21 @@ class PacketBridge(Thread):
             print "Protocol IP: " + protocolIP
             print "Size IP: " + str(int(sizeIP, 16))
 
+            if protocolIP == '0001':
+                print "ICMP"
+                icmpHeader = packet[35:42]
+                icmpHdr = struct.unpack("!1s1s2s4s", icmpHeader)
+                typeOfMessageICMP = binascii.hexlify(icmpHdr[0])
+                codeICMP = binascii.hexlify(icmpHdr[1])
+                checksumICMP = binascii.hexlify(icmpHdr[2])
+                headerDataICMP = binascii.hexlify(icmpHdr[3])
+                payloadDataICMP = packet[43:]
+                print "Type Of Message: " + typeOfMessageICMP
+                print "Code: " + codeICMP
+                print "Checksum: " + checksumICMP
+                print "Header Data: " + headerDataICMP
+                print "Payload Data: " + payloadDataICMP
+
         if protocol == '86dd':  # ip6
             print 'ipv6 packet'
             # IP Header...
@@ -194,6 +209,7 @@ class PacketBridge(Thread):
             try:
                 receivedPacket = rawSocket.recv(8192)
                 # print "Recieved packet: ", len(receivedPacket), "ThreadID: ", self.ident
+                # self.print_packet(receivedPacket)
                 self.packet_queue_left.put_nowait(receivedPacket)
                 self.packet_sent_queue += 1
                 self.printStatistics()
