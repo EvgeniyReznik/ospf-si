@@ -48,7 +48,7 @@ class TimerThread(Thread):
 
     def stop(self):
         Thread._Thread__stop(self)
-        # print("%s stopped" % self.name)
+        print("%s stopped" % self.name)
 
 
 class PacketFilter(Thread):
@@ -366,7 +366,7 @@ if __name__ == "__main__":
         global BUFFER_CURRENT_SIZE
         with bufferUpdateLock:
                 BUFFER_CURRENT_SIZE = BUFFER_SLICE_SIZE
-        print "Buff Update" , time.ctime()
+        # print "Buff Update" , time.ctime()
 
 
     timeThread = TimerThread(TIME_SLICE, bufferSizeUpdate, bufferUpdateLock)
