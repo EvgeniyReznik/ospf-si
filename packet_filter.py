@@ -48,7 +48,7 @@ class TimerThread(Thread):
 
     def stop(self):
         Thread._Thread__stop(self)
-        print("%s stopped" % self.name)
+        # print("%s stopped" % self.name)
 
 
 class PacketFilter(Thread):
