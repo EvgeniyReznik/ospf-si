@@ -10,11 +10,12 @@ PROTOCOL_UDP    = 0x11
 PROTOCOL_ICMP   = 0x01
 PROTOCOL_IGMP   = 0x02
 
-SEND_INTERFACE_NAME = "ens33"
+SEND_INTERFACE_NAME = "veth0"
 PORT_NUMBER = 1
 
 rawSocketSend = socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.IPPROTO_RAW)
 rawSocketSend.bind((SEND_INTERFACE_NAME, PORT_NUMBER))
+
 
 hello_packet_130 = ''
 for c in example_packets.OSPF_HELLO_PACKET_130.split(' '):
@@ -35,6 +36,7 @@ for c in example_packets.IPV4_PING_REPLY_PACKET.split(' '):
 
 for i in range(0, 1000000, 1):
     rawSocketSend.send(ipv4_ping_request_packet)
+    sleep(0.125)
     for j in range(0, 10, 1):
         rawSocketSend.send(hello_packet_130)
         # print "Sending packet: ", i
@@ -45,3 +47,4 @@ for i in range(0, 1000000, 1):
         # print "Sending packet: ", j
         sleep(0.125)
     rawSocketSend.send(ipv4_ping_request_packet)
+    sleep(0.125)
