@@ -109,6 +109,37 @@ class PacketFilter(Thread):
 
         print binascii.hexlify(packet)
 
+    def is_dlep_packet(self, packet):
+        # Ethernet Header...
+        ethernetHeader = packet[0:14]
+        ethrheader = struct.unpack("!6s6s2s", ethernetHeader)
+        destinationMAC = binascii.hexlify(ethrheader[0])
+        sourceMAC = binascii.hexlify(ethrheader[1])
+        protocol = binascii.hexlify(ethrheader[2])
+
+        if protocol == '0800':  # ip4
+            # IP Header...
+            ipHeader = packet[14:34]
+            ipHdr = struct.unpack("!1s1s2s2s2s1s1s2s4s4s", ipHeader)
+            sizeIP = binascii.hexlify(ipHdr[2])
+            protocolIP = binascii.hexlify(ipHdr[6])
+            destinationIP = socket.inet_ntoa(ipHdr[9])
+            sourceIP = socket.inet_ntoa(ipHdr[8])
+
+            if protocolIP == '0011': #UDP
+                icmpHeader = packet[35:42]
+                icmpHdr = struct.unpack("!2s2s2s2s", icmpHeader)
+                sourcePortUDP = binascii.hexlify(icmpHdr[0])
+                destinationPortUDP = binascii.hexlify(icmpHdr[1])
+                lengthUDP = binascii.hexlify(icmpHdr[2])
+                checksumUDP = binascii.hexlify(icmpHdr[3])
+                payloadDataUDP = packet[43:]
+
+                if (sourcePortUDP == "55555" or destinationPortUDP == "55555"):
+                    return True
+
+        return False
+
     def printStatistics(self):
         if(self.packet_sent_queue % 100 == 0):
             print "ThreadId: ", self.ident
@@ -147,6 +178,21 @@ class PacketFilter(Thread):
             for packet_to_send in packet_list_to_send:
                 # check if there is enogh bytes left in epoch
                 with self.bufferUpdateLock:
+
+                    #take care of DLEP packets
+                    if (self.is_dlep_packet(packet_to_send)):
+                        try:
+                            rawSocket.send(packet_to_send)
+                            self.packet_sent_socket += 1
+                            self.printStatistics()
+                            continue
+                            # print "Packet sent" , self.ident
+                        except Exception as e:
+                            print "Packet Bridge: Packet dropped!!! ", len(packet_to_send)
+                            print e
+                            self.print_packet(packet_to_send)
+                            continue
+
                     # print "buff curr size", BUFFER_CURRENT_SIZE
                     # print "packet size", len(packet_to_send)
                     if (BUFFER_CURRENT_SIZE >= len(packet_to_send)):
