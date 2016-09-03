@@ -33,18 +33,28 @@ ipv4_ping_reply_packet = ''
 for c in example_packets.IPV4_PING_REPLY_PACKET.split(' '):
     ipv4_ping_reply_packet += chr(int(c, 16))
 
+ipv4_dlep_src_packet = ''
+for c in example_packets.IPV4_DLEP_SRC_PACKET.split(' '):
+    ipv4_dlep_src_packet += chr(int(c, 16))
+
+ipv4_dlep_dst_packet = ''
+for c in example_packets.IPV4_DLEP_DST_PACKET.split(' '):
+    ipv4_dlep_dst_packet += chr(int(c, 16))
+
 
 for i in range(0, 1000000, 1):
-    rawSocketSend.send(ipv4_ping_request_packet)
-    sleep(0.125)
     for j in range(0, 10, 1):
         rawSocketSend.send(hello_packet_130)
+        rawSocketSend.send(ipv4_dlep_dst_packet)
+        rawSocketSend.send(ipv4_dlep_src_packet)
+        rawSocketSend.send(ipv4_ping_request_packet)
         # print "Sending packet: ", i
         sleep(0.125)
-    rawSocketSend.send(ipv4_ping_reply_packet)
+
     for j in range(0, 10, 1):
+        rawSocketSend.send(ipv4_dlep_dst_packet)
+        rawSocketSend.send(ipv4_dlep_src_packet)
+        rawSocketSend.send(ipv4_ping_reply_packet)
         rawSocketSend.send(hello_packet_310)
         # print "Sending packet: ", j
         sleep(0.125)
-    rawSocketSend.send(ipv4_ping_request_packet)
-    sleep(0.125)
