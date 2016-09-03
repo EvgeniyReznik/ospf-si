@@ -14,7 +14,8 @@
 	1. change SWROPTINS accordingly
 
 ### 3. connect packet filter to veth1 and eth0
-	* "filter messages from veth1 to eth0"
-	* "pass all messages from eth0 to veth1"
-	1. sudo python packet_filter.py veth1 eth0
-	
+	* "filter OSPFv3 packets from veth1 to eth0"
+	* "pass   all    packets from eth0  to veth1"
+	* "buffer size in bytes"
+	* "buffer_refresh_time in seconds"
+	1. sudo python packet_filter.py veth1 eth0 1024 0.5
