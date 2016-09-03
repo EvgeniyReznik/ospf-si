@@ -140,6 +140,29 @@ class PacketFilter(Thread):
 
         return False
 
+    def is_ospfv3_packet(self, packet):
+        # Ethernet Header...
+        ethernetHeader = packet[0:14]
+        ethrheader = struct.unpack("!6s6s2s", ethernetHeader)
+        destinationMAC = binascii.hexlify(ethrheader[0])
+        sourceMAC = binascii.hexlify(ethrheader[1])
+        protocol = binascii.hexlify(ethrheader[2])
+
+        if protocol == '86dd':  # ipv6
+            #print IP Header...
+            ipHeader = packet[14:54]
+            ipHdr = struct.unpack("!4s2s1s1s16s16s", ipHeader)
+            sizeIP = binascii.hexlify(ipHdr[1])
+            protocolIP = binascii.hexlify(ipHdr[2])
+            sourceIP = binascii.hexlify(ipHdr[4])
+            destinationIP = binascii.hexlify(ipHdr[5])
+
+            if protocolIP == '59': #OSPF
+                # print "OSPF packet"
+                return True
+
+        return False
+
     def printStatistics(self):
         if(self.packet_sent_queue % 100 == 0):
             print "ThreadId: ", self.ident
@@ -148,12 +171,53 @@ class PacketFilter(Thread):
             print " Packets sent to socket: ", self.packet_sent_socket
             print " Packet sent to queue: ", self.packet_sent_queue
 
+    def async_packet_send(self, socket, packet):
+        try:
+            socket.send(packet)
+            self.packet_sent_socket += 1
+            self.printStatistics()
+            # print "Packet sent" , self.ident
+        except Exception as e:
+            print "Packet Bridge: Failed to send!!! ", len(packet)
+            print e
+            self.print_packet(packet)
+        return
 
-    def sniff(self):
-
+    def async_packet_recieve(self, socket):
         global BUFFER_CURRENT_SIZE
 
-        sizeIP = '0x00'
+        try:
+            receivedPacket = socket.recv(1514)
+            # print "Recieved packet: ", len(receivedPacket), "ThreadID: ", self.ident
+            # self.print_packet(receivedPacket)
+            # take care of OSPFv3 packets
+            if (self.is_ospfv3_packet(receivedPacket)):
+                with self.bufferUpdateLock:
+                        # print "buff curr size", BUFFER_CURRENT_SIZE
+                        # print "packet size", len(receivedPacket)
+                        # check if there is enogh bytes left in epoch
+                        if (BUFFER_CURRENT_SIZE >= len(receivedPacket)):
+                            self.packet_queue_left.put_nowait(receivedPacket)
+                            BUFFER_CURRENT_SIZE -= len(receivedPacket)
+                            self.packet_sent_queue += 1
+                            self.printStatistics()
+                        else:
+                            # print "Got to the limit of free epoch bytes"
+                            # print "buff curr size", BUFFER_CURRENT_SIZE
+                            # print "packet size", len(receivedPacket)
+                            None
+            # take care of NON OSPFv3 packets
+            else:
+                self.packet_queue_left.put_nowait(receivedPacket)
+                self.packet_sent_queue += 1
+                self.printStatistics()
+        except Exception as e:
+            # print e
+            # print "Nothing to recieve!!!"
+            None
+        return
+
+    def sniff(self):
 
         rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW)  # THIS CODE WORKS
         rawSocket.bind((self.interface_name, ETH_P_ALL))
@@ -164,6 +228,7 @@ class PacketFilter(Thread):
             # print "---------------------------------------------bridge packet---------------------------------------------------"
 
             packet_list_to_send = []
+            #get packets out of queue
             while(True):
                 try:
                     packet_temp = None
@@ -175,58 +240,14 @@ class PacketFilter(Thread):
                     # print e
                     break
 
+            #send packets from queue
             for packet_to_send in packet_list_to_send:
-                # check if there is enogh bytes left in epoch
-                with self.bufferUpdateLock:
+                self.async_packet_send(rawSocket, packet_to_send)
 
-                    #take care of DLEP packets
-                    if (self.is_dlep_packet(packet_to_send)):
-                        try:
-                            rawSocket.send(packet_to_send)
-                            self.packet_sent_socket += 1
-                            self.printStatistics()
-                            continue
-                            # print "Packet sent" , self.ident
-                        except Exception as e:
-                            print "Packet Bridge: Packet dropped!!! ", len(packet_to_send)
-                            print e
-                            self.print_packet(packet_to_send)
-                            continue
+            #recieve new packet from interface
+            self.async_packet_recieve(rawSocket)
 
-                    # print "buff curr size", BUFFER_CURRENT_SIZE
-                    # print "packet size", len(packet_to_send)
-                    if (BUFFER_CURRENT_SIZE >= len(packet_to_send)):
-                        BUFFER_CURRENT_SIZE -= len(packet_to_send)
-                        if int(sizeIP, 16) <= 1514:
-                            try:
-                                rawSocket.send(packet_to_send)
-                                self.packet_sent_socket += 1
-                                self.printStatistics()
-                                # print "Packet sent" , self.ident
-                            except Exception as e:
-                                print "Packet Bridge: Packet dropped!!! ", len(packet_to_send)
-                                print e
-                                self.print_packet(packet_to_send)
-                                continue
-                    else:
-                        print "Got to the limit of free epoch bytes"
-                        print "buff curr size", BUFFER_CURRENT_SIZE
-                        print "packet size", len(packet_to_send)
-                        continue
-
-            try:
-                receivedPacket = rawSocket.recv(1514)
-                # print "Recieved packet: ", len(receivedPacket), "ThreadID: ", self.ident
-                # self.print_packet(receivedPacket)
-                self.packet_queue_left.put_nowait(receivedPacket)
-                self.packet_sent_queue += 1
-                self.printStatistics()
-            except Exception as e:
-                # print e
-                # print "Nothing to recieve!!!"
-                None
-
-            time.sleep(0.001)
+            time.sleep(0.0005)
 
     def __init__(self, bufferUpdateLock, interface_name, packet_queue_left, packet_queue_right):
         Thread.__init__(self)
@@ -342,7 +363,7 @@ class PacketBridge(Thread):
                     self.printStatistics()
                     # print "Packet sent" , self.ident
                 except Exception as e:
-                    print "Packet Bridge: Packet dropped!!! ", len(packet_to_send)
+                    print "Packet Bridge: Failed to send!!! ", len(packet_to_send)
                     print e
                     self.print_packet(packet_to_send)
                     continue
@@ -416,9 +437,9 @@ if __name__ == "__main__":
 
 
     timeThread = TimerThread(TIME_SLICE, bufferSizeUpdate, bufferUpdateLock)
-    lthread = PacketFilter(bufferUpdateLock, host2_interface, packet_queue_left, packet_queue_right)
+    lthread = PacketFilter(bufferUpdateLock, host1_interface, packet_queue_left, packet_queue_right)
     # lthread = PacketBridge(host2_interface, packet_queue_left, packet_queue_right)
-    rthread = PacketBridge(host1_interface, packet_queue_right, packet_queue_left)
+    rthread = PacketBridge(host2_interface, packet_queue_right, packet_queue_left)
 
     timeThread.start()
     lthread.start()
