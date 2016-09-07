@@ -8,15 +8,13 @@ import threading
 from threading import Event
 import time
 from sys import getsizeof
-import  Queue
+import Queue
 
-
-
-PROTOCOL_OSPF   = 0x59
-PROTOCOL_TCP    = 0x06
-PROTOCOL_UDP    = 0x11
-PROTOCOL_ICMP   = 0x01
-PROTOCOL_IGMP   = 0x02
+PROTOCOL_OSPF = 0x59
+PROTOCOL_TCP = 0x06
+PROTOCOL_UDP = 0x11
+PROTOCOL_ICMP = 0x01
+PROTOCOL_IGMP = 0x02
 
 OSPF_HELLO = 0x01
 
@@ -25,6 +23,11 @@ ETH_P_ALL = 3
 
 packet_queue_left = Queue.Queue()
 packet_queue_right = Queue.Queue()
+
+global BUFFER_CURRENT_SIZE
+# buffer credit is alwais less than twice buffer slice size
+global BUFFER_CREDIT_SIZE
+
 
 # rawSocketRecv = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3)) #THIS CODE WORKS
 # rawSocketRecv.setsockopt(socket.SOL_SOCKET, IN.SO_BINDTODEVICE, struct.pack("%ds"%(len("veth1")+1,),"veth1"))
@@ -52,7 +55,6 @@ class TimerThread(Thread):
 
 
 class PacketFilter(Thread):
-
     def print_packet(self, packet):
         # Ethernet Header...
         ethernetHeader = packet[0:14]
@@ -126,7 +128,7 @@ class PacketFilter(Thread):
             destinationIP = socket.inet_ntoa(ipHdr[9])
             sourceIP = socket.inet_ntoa(ipHdr[8])
 
-            if protocolIP == '0011': #UDP
+            if protocolIP == '0011':  # UDP
                 icmpHeader = packet[35:42]
                 icmpHdr = struct.unpack("!2s2s2s2s", icmpHeader)
                 sourcePortUDP = binascii.hexlify(icmpHdr[0])
@@ -149,7 +151,7 @@ class PacketFilter(Thread):
         protocol = binascii.hexlify(ethrheader[2])
 
         if protocol == '86dd':  # ipv6
-            #print IP Header...
+            # print IP Header...
             ipHeader = packet[14:54]
             ipHdr = struct.unpack("!4s2s1s1s16s16s", ipHeader)
             sizeIP = binascii.hexlify(ipHdr[1])
@@ -157,14 +159,14 @@ class PacketFilter(Thread):
             sourceIP = binascii.hexlify(ipHdr[4])
             destinationIP = binascii.hexlify(ipHdr[5])
 
-            if protocolIP == '59': #OSPF
+            if protocolIP == '59':  # OSPF
                 # print "OSPF packet"
                 return True
 
         return False
 
     def printStatistics(self):
-        if(self.packet_sent_queue % 100 == 0):
+        if (self.packet_sent_queue % 100 == 0):
             print "ThreadId: ", self.ident
             print " Recv Queue size: ", packet_queue_left.qsize()
             print " Sent Queue size: ", packet_queue_right.qsize()
@@ -185,14 +187,25 @@ class PacketFilter(Thread):
 
     def async_packet_recieve(self, socket):
         global BUFFER_CURRENT_SIZE
+        global BUFFER_CREDIT_SIZE
 
         try:
             receivedPacket = socket.recv(1514)
             # print "Recieved packet: ", len(receivedPacket), "ThreadID: ", self.ident
             # self.print_packet(receivedPacket)
             # take care of OSPFv3 packets
-            if (self.is_ospfv3_packet(receivedPacket)):
+            if self.is_ospfv3_packet(receivedPacket):
                 with self.bufferUpdateLock:
+                    # take care of packets which are longer than buffer
+                    if len(receivedPacket) >= self.buffer_slice_size:
+                        if len(receivedPacket) <= (BUFFER_CURRENT_SIZE + self.buffer_slice_size):
+                            BUFFER_CREDIT_SIZE = len(receivedPacket) - BUFFER_CURRENT_SIZE
+                            BUFFER_CURRENT_SIZE = 0
+                            self.packet_queue_left.put_nowait(receivedPacket)
+                            self.packet_sent_queue += 1
+                            self.printStatistics()
+                    # take care of packets which are shorter than buffer
+                    else:
                         # print "buff curr size", BUFFER_CURRENT_SIZE
                         # print "packet size", len(receivedPacket)
                         # check if there is enogh bytes left in epoch
@@ -228,8 +241,8 @@ class PacketFilter(Thread):
             # print "---------------------------------------------bridge packet---------------------------------------------------"
 
             packet_list_to_send = []
-            #get packets out of queue
-            while(True):
+            # get packets out of queue
+            while (True):
                 try:
                     packet_temp = None
                     packet_temp = self.packet_queue_right.get_nowait()
@@ -240,20 +253,21 @@ class PacketFilter(Thread):
                     # print e
                     break
 
-            #send packets from queue
+            # send packets from queue
             for packet_to_send in packet_list_to_send:
                 self.async_packet_send(rawSocket, packet_to_send)
 
-            #recieve new packet from interface
+            # recieve new packet from interface
             self.async_packet_recieve(rawSocket)
 
             time.sleep(0.0005)
 
-    def __init__(self, bufferUpdateLock, interface_name, packet_queue_left, packet_queue_right):
+    def __init__(self, bufferUpdateLock, buffer_slice_size, interface_name, packet_queue_left, packet_queue_right):
         Thread.__init__(self)
 
         self.buffer_current_size = 0
         self.bufferUpdateLock = bufferUpdateLock
+        self.buffer_slice_size = buffer_slice_size
         self.interface_name = interface_name
         self.packet_queue_left = packet_queue_left
         self.packet_queue_right = packet_queue_right
@@ -269,7 +283,6 @@ class PacketFilter(Thread):
 
 
 class PacketBridge(Thread):
-
     def print_packet(self, packet):
         # Ethernet Header...
         ethernetHeader = packet[0:14]
@@ -327,13 +340,12 @@ class PacketBridge(Thread):
         print binascii.hexlify(packet)
 
     def printStatistics(self):
-        if(self.packet_sent_queue % 100 == 0):
+        if (self.packet_sent_queue % 100 == 0):
             print "ThreadId: ", self.ident
             print " Recv Queue size: ", packet_queue_left.qsize()
             print " Sent Queue size: ", packet_queue_right.qsize()
             print " Packets sent to socket: ", self.packet_sent_socket
             print " Packet sent to queue: ", self.packet_sent_queue
-
 
     def sniff(self):
         rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW)  # THIS CODE WORKS
@@ -345,7 +357,7 @@ class PacketBridge(Thread):
             # print "---------------------------------------------bridge packet---------------------------------------------------"
 
             packet_list_to_send = []
-            while(True):
+            while (True):
                 try:
                     packet_temp = None
                     packet_temp = self.packet_queue_right.get_nowait()
@@ -398,6 +410,7 @@ class PacketBridge(Thread):
         Thread._Thread__stop(self)
         print("%s stopped" % self.name)
 
+
 def usage():
     print 'Usage: packet_filter.py host_interface1 host_interface2 buffer_size buffer_refresh_time'
     print ' host_interface1 - active ethernet interface'
@@ -429,15 +442,26 @@ if __name__ == "__main__":
     print BUFFER_SLICE_SIZE
 
     bufferUpdateLock = threading.RLock()
-    def bufferSizeUpdate( bufferUpdateLock ):
-        global BUFFER_CURRENT_SIZE
-        with bufferUpdateLock:
-                BUFFER_CURRENT_SIZE = BUFFER_SLICE_SIZE
-        # print "Buff Update" , time.ctime()
 
+
+    def bufferSizeUpdate(bufferUpdateLock):
+        global BUFFER_CURRENT_SIZE
+        # buffer credit is alwais less than twice buffer slice size
+        global BUFFER_CREDIT_SIZE
+        with bufferUpdateLock:
+            BUFFER_CURRENT_SIZE = BUFFER_SLICE_SIZE - BUFFER_CREDIT_SIZE
+            BUFFER_CREDIT_SIZE = 0
+            # print "Buff Update" , time.ctime()
+
+    # initializing global valuables
+    global BUFFER_CURRENT_SIZE
+    # buffer credit is always less than twice buffer slice size
+    global BUFFER_CREDIT_SIZE
+    BUFFER_CURRENT_SIZE = 0
+    BUFFER_CREDIT_SIZE = 0
 
     timeThread = TimerThread(TIME_SLICE, bufferSizeUpdate, bufferUpdateLock)
-    lthread = PacketFilter(bufferUpdateLock, host1_interface, packet_queue_left, packet_queue_right)
+    lthread = PacketFilter(bufferUpdateLock, BUFFER_SLICE_SIZE, host1_interface, packet_queue_left, packet_queue_right)
     # lthread = PacketBridge(host2_interface, packet_queue_left, packet_queue_right)
     rthread = PacketBridge(host2_interface, packet_queue_right, packet_queue_left)
 

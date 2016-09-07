@@ -1,4 +1,6 @@
 # ospf-si
+	* "script passes packets that less than 2*buffer_size"
+	* "packets that are bigger will be dropped"
 
 ### 1. creating virtual eth:
 	* "create veth0, veth1 and connect them"
