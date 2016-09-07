@@ -16,6 +16,11 @@ PORT_NUMBER = 1
 rawSocketSend = socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.IPPROTO_RAW)
 rawSocketSend.bind((SEND_INTERFACE_NAME, PORT_NUMBER))
 
+def packet_int2char(packet):
+    result_packet = ''
+    for c in packet.split(' '):
+        result_packet += chr(int(c, 16))
+    return result_packet
 
 hello_packet_130 = ''
 for c in example_packets.OSPF_HELLO_PACKET_130.split(' '):
@@ -41,8 +46,13 @@ ipv4_dlep_dst_packet = ''
 for c in example_packets.IPV4_DLEP_DST_PACKET.split(' '):
     ipv4_dlep_dst_packet += chr(int(c, 16))
 
+ospf_long_bullshit_packet = ''
+for c in example_packets.OSPF_LONG_BULLSHIT_PACKET.split(' '):
+    ospf_long_bullshit_packet += chr(int(c, 16))
+
 
 for i in range(0, 1000000, 1):
+
     for j in range(0, 10, 1):
         rawSocketSend.send(hello_packet_130)
         rawSocketSend.send(ipv4_dlep_dst_packet)
@@ -50,6 +60,8 @@ for i in range(0, 1000000, 1):
         rawSocketSend.send(ipv4_ping_request_packet)
         # print "Sending packet: ", i
         sleep(0.125)
+
+    rawSocketSend.send(ospf_long_bullshit_packet)
 
     for j in range(0, 10, 1):
         rawSocketSend.send(ipv4_dlep_dst_packet)
